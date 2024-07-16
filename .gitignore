@@ -23,8 +23,8 @@ archive.zip
 
 
 /*/*
-!scripts/
-!frontend/
+!scripts/*
+!frontend/*
 # vim temporary files
 *~
 .*.sw?
