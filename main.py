@@ -1,5 +1,5 @@
 import json
-from typing import List, Union, Optional
+from typing import List, Literal, Union, Optional
 
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, FileResponse
@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import os
 
-# import uvicorn
+import uvicorn
 import pandas as pd
 import joblib
 from scripts.target_scripts import *
@@ -50,8 +50,7 @@ async def prepare_datasets():
         create_datasets()
         return "Dataset prepared successfully", 200
     except Exception as e:
-        print(e)
-        return "Dataset preparation failed", 500
+        return f"Dataset preparation failed: {e}", 500
 
 
 @app.post("/datasets/upload_predict")
@@ -62,18 +61,20 @@ async def upload_predict_files(files: List[UploadFile]):
     """
     directory = "uploaded"
     try:
-        upload_files(files, directory)
+        result_uf = await upload_files(files, directory)
 
     except Exception as e:
-        print(e)
+
         return JSONResponse(
             content={"error": "Files uploading failed"}, status_code=500
         )
 
     try:
-        prepare_datasets()
+        result_pd = await prepare_datasets()
+        if result_pd == tuple[Literal["Dataset preparation failed"], Literal[500]]:
+            raise Exception("Error preparing dataset")
     except Exception as e:
-        print(e)
+
         return JSONResponse(
             content={"error": "Files preparing failed"}, status_code=500
         )
@@ -99,7 +100,7 @@ async def upload_weather_file(files: List[UploadFile] = File(...)):
     try:
         prepare_weather_data("weather_input/", "weather_gzip_input/", "weather_dfs/")
     except Exception as e:
-        print(e)
+
         return JSONResponse(
             content={"error": "Files preparing failed"}, status_code=500
         )
@@ -130,11 +131,9 @@ def predict(
         # Load the model
         model_path = f"ModelsNewFix/{pmode}_lag_{hours}_КС-{ks}_LGBM_model.joblib"
         loaded_model = joblib.load(model_path)
-
         # Load training and test data
         train_path = f"data/КС-{ks}_{pmode}_{hours[:-1]}_h.parquet"
         test_path = f"data/КС-{ks}_{pmode}_{hours[:-1]}_h_new.parquet"
-
         train = pd.read_parquet(train_path)
         test = pd.read_parquet(test_path)
 
@@ -148,14 +147,14 @@ def predict(
                 )
 
         # Prepare training data
-        X_train = train.drop(columns=["DateTime", f"{pmode}_target_shift_{hours}_{ks}"])
-        y_train = train[f"{pmode}_target_shift_{hours}_{ks}"]
+        X_train = train.drop(columns=["DateTime", f"{pmode}_target_shift_{hours[:-1]}h_{ks}"])
+        y_train = train[f"{pmode}_target_shift_{hours[:-1]}h_{ks}"]
 
         # Fit the model
         loaded_model.fit(X_train, y_train)
 
         # Prepare test data
-        X_test = test.drop(columns=["DateTime"])
+        X_test = test.drop(columns=["DateTime", f"{pmode}_target_shift_{hours[:-1]}h_КС{ks}"])
 
         # Create date index for the predictions
         date_index = test["DateTime"].apply(
@@ -224,7 +223,7 @@ def download_file(
             filename=f"result_КС-{ks}_{pmode}__{hours[:-1]}_h.xlsx",
         )
     except Exception as e:
-        print(e)
+
         raise HTTPException(status_code=500, detail="Files sending failed")
 
 

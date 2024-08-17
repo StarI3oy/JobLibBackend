@@ -345,7 +345,7 @@ def train_test_periodic_split(result, percentage=0.8, step=0.1):
                     train_set,
                     result.loc[
                         (result.DateTime >= min_date + start_date)
-                        & (result.DateTime <= min_date + end_date)
+                        & (result.DateTime <= min_end_date)
                     ],
                 ],
                 ignore_index=True,
@@ -357,7 +357,7 @@ def train_test_periodic_split(result, percentage=0.8, step=0.1):
                     test_set,
                     result.loc[
                         (result.DateTime >= min_date + start_date)
-                        & (result.DateTime <= min_date + end_date)
+                        & (result.DateTime <= min_end_date)
                     ],
                 ],
                 ignore_index=True,
@@ -374,10 +374,17 @@ def assign_features_ks_hours(result, column_names, mode="Pin", ks="15", hours=48
     """
     Функция берет n-признаков на основе имеющегося датасета модели  (в данном случае LGBMRegressor)
     """
-    result.to_parquet("test.parquet")
+    # result.to_parquet("test.parquet")
     result_2 = result[column_names]
     result_2["DateTime"] = result["DateTime"]
     return result_2
+
+
+from scripts.target_scripts import (
+    assign_features_ks_hours,
+    prepare_shift_and_lags,
+    prepare_target_set,
+)
 
 
 def create_datasets():
@@ -390,13 +397,13 @@ def create_datasets():
 
     #! DEBUG  измени перед релизом
     for Target_Name in ["КС-15", "КС-16", "КС-17", "КС-19"]:
-    # for Target_Name in ["КС-15"]:
+        # for Target_Name in ["КС-15"]:
         for Hours in [48, 72, 96]:
-        # for Hours in [48]:
+            # for Hours in [48]:
             Target_List = ["КС-15", "КС-16", "КС-17", "КС-19"]
             for mode in ["Pin", "Pout"]:
                 try:
-                # for mode in ["Pin"]:
+                    # for mode in ["Pin"]:
                     # t_set = prepare_dataset(Target_List, Target_Name, "2",hours= Hours) #* В папке upload должны будут лежать
 
                     try:
@@ -410,24 +417,25 @@ def create_datasets():
                             + "_h.xlsx"
                         )
                     except Exception as e:
-                        raise ("Read excel for target error:\n" + e)
+                        # raise Exception(f"\nRead excel for target error: {e}")
+                        continue
 
                     # ! DEBUG
                     # try:
                     #     weather_dfs = prepare_weather_dict_dataset()
 
                     # except Exception as e:
-                    #     raise("Prepare weather dict error:\n"+e)
+                    #     raise(Exception"Prepare weather dict error:\n"+e)
 
                     try:
                         result = prepare_target_set(t_set, [])  #! DEBUG
                     except Exception as e:
-                        raise ("Prepare target set error:\n" + e)
+                        raise Exception(f" Prepare target set error: {e}")
 
                     try:
                         total_result = prepare_shift_and_lags(result)
                     except Exception as e:
-                        raise ("Prapare shift and lags error:\n" + e)
+                        raise Exception(f" Prapare shift and lags error : {e}")
 
                     try:
                         total_result_new = total_result.rename(
@@ -440,12 +448,16 @@ def create_datasets():
                         new_n_list = list(new_names.values())
                         # [LightGBM] Исправление одинаковых колонок.
                         new_names = {
-                            col: f"{new_col}_{i}" if new_col in new_n_list[:i] else new_col
+                            col: (
+                                f"{new_col}_{i}"
+                                if new_col in new_n_list[:i]
+                                else new_col
+                            )
                             for i, (col, new_col) in enumerate(new_names.items())
                         }
                         total_result_new = total_result.rename(columns=new_names)
                     except Exception as e:
-                        raise ("Rename columns error:\n" + e)
+                        raise Exception(f" Rename columns error : {e}")
 
                     try:
                         train_set_column_names = (
@@ -466,7 +478,9 @@ def create_datasets():
                             .columns
                         )
                     except Exception as e:
-                        raise ("Error getting columns names from train dataset:\n" + e)
+                        raise Exception(
+                            f" Error getting columns names from train dataset : {e}"
+                        )
 
                     try:
                         result_final = assign_features_ks_hours(
@@ -477,7 +491,7 @@ def create_datasets():
                             Hours,
                         )
                     except Exception as e:
-                        raise ("Assign features ks hours error:\n" + e)
+                        raise Exception(f" Assign features ks hours error: {e}")
 
                     try:
                         result_final.to_parquet(
@@ -491,6 +505,7 @@ def create_datasets():
                             index=None,
                         )
                     except Exception as e:
-                        raise ("Error saving result parquet file:\n" + e)
-                except:
+                        raise Exception(f" Error saving result parquet file: {e}")
+                except Exception as e:
+                    raise Exception(e)
                     continue
